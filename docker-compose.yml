@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  # 1. The Core API Gateway
+  control-plane:
+    build: 
+      context: ./control-plane
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis-broker:6379
+    depends_on:
+      - redis-broker
+
+  # 2. The Message Broker (Task Queue)
+  redis-broker:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  # 3. The SQL AST Engine
+  sqlglot-worker:
+    build:
+      context: ./ast-engines/sqlglot-worker
+    environment:
+      - REDIS_URL=redis://redis-broker:6379
+    depends_on:
+      - redis-broker
