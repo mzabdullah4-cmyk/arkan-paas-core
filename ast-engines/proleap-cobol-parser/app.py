@@ -9,12 +9,17 @@ class AnalyzeRequest(BaseModel):
 
 
 @app.get("/")
-def root():
+def root() -> dict:
     return {"status": "online", "engine": "proleap-cobol-parser"}
 
 
+@app.get("/health")
+def health() -> dict:
+    return {"status": "ok", "engine": "proleap-cobol-parser"}
+
+
 @app.post("/analyze")
-def analyze_cobol(payload: AnalyzeRequest):
+def analyze_cobol(payload: AnalyzeRequest) -> dict:
     source = payload.source or ""
     return {
         "engine": "proleap",

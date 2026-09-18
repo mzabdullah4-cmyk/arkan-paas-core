@@ -7,7 +7,8 @@ services:
       - "6379:6379"
 
   control-plane:
-    build: ./control-plane
+    build:
+      context: ./control-plane
     ports:
       - "8000:8000"
     environment:
@@ -19,7 +20,8 @@ services:
       - ./control-plane/data:/data
 
   job-runner:
-    build: ./job-runner
+    build:
+      context: ./job-runner
     environment:
       REDIS_URL: redis://redis-broker:6379/0
       CONTROL_PLANE_URL: http://control-plane:8000
@@ -32,15 +34,21 @@ services:
       - cobol-worker
 
   sqlglot-worker:
-    build: ./ast-engines/sqlglot-worker
+    build:
+      context: ./ast-engines/sqlglot-worker
     ports:
       - "8001:8000"
+    environment:
+      REDIS_URL: redis://redis-broker:6379/0
     depends_on:
       - redis-broker
 
   cobol-worker:
-    build: ./ast-engines/proleap-cobol-parser
+    build:
+      context: ./ast-engines/proleap-cobol-parser
     ports:
       - "8002:8000"
+    environment:
+      REDIS_URL: redis://redis-broker:6379/0
     depends_on:
       - redis-broker

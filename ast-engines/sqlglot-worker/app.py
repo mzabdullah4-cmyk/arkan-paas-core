@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI
 from pydantic import BaseModel
 
@@ -9,14 +10,20 @@ class AnalyzeRequest(BaseModel):
 
 
 @app.get("/")
-def root():
+def root() -> dict:
     return {"status": "online", "engine": "sqlglot-worker"}
 
 
+@app.get("/health")
+def health() -> dict:
+    return {"status": "ok", "engine": "sqlglot-worker"}
+
+
 @app.post("/analyze")
-def analyze_sql(payload: AnalyzeRequest):
+def analyze_sql(payload: AnalyzeRequest) -> dict:
     try:
         from sqlglot import parse_one
+
         parsed = parse_one(payload.sql)
         return {
             "engine": "sqlglot",
@@ -28,7 +35,7 @@ def analyze_sql(payload: AnalyzeRequest):
                 "dump": parsed.sql(pretty=True),
             },
         }
-    except Exception as exc:  # pragma: no cover
+    except Exception as exc:  # pragma: no cover - worker failure path
         return {
             "engine": "sqlglot",
             "status": "error",
