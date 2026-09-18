@@ -1,3 +1,2 @@
-FASTAPI Requirements
 redis
 requests
