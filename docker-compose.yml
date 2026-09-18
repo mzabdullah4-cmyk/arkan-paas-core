@@ -26,3 +26,12 @@ services:
       - REDIS_URL=redis://redis-broker:6379
     depends_on:
       - redis-broker
+
+  # 4. The COBOL AST Engine (MIT Parser)
+  cobol-worker:
+    build:
+      context: ./ast-engines/proleap-cobol-parser
+    environment:
+      - REDIS_URL=redis://redis-broker:6379
+    depends_on:
+      - redis-broker
