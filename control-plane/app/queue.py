@@ -1,32 +1,18 @@
-import os
 import json
+import os
 from typing import Any, Dict
 
-try:
-    import redis
-except Exception:  # pragma: no cover
-    redis = None
+import redis
 
 
 class JobQueue:
     def __init__(self):
-        self.redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        self._fallback = []
-        self._client = None
-        if redis is not None:
-            try:
-                self._client = redis.Redis.from_url(self.redis_url, decode_responses=True)
-                self._client.ping()
-            except Exception:
-                self._client = None
+        self.client = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"), decode_responses=True)
 
     def enqueue(self, job_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         item = {"job_id": job_id, **payload}
-        if self._client is not None:
-            self._client.lpush("arkan:jobs", json.dumps(item))
-            return {"queued": True, "backend": "redis"}
-        self._fallback.append(item)
-        return {"queued": True, "backend": "memory"}
+        self.client.lpush("arkan:jobs", json.dumps(item))
+        return {"queued": True, "backend": "redis"}
 
 
 queue = JobQueue()

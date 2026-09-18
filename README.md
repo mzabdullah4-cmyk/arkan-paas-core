@@ -1,57 +1,28 @@
 # Arkan PaaS Core
 
-This repo is a minimal MVP for an AI-assisted legacy modernization platform.
+MVP pipeline: create project → store source artifact → enqueue job → run an isolated engine → persist normalized result.
 
-## What is built
-
-- FastAPI control plane
-- SQLite-backed project, artifact, and job storage
-- Redis-ready job queue with in-memory fallback
-- SQLGlot worker scaffold
-- COBOL parser worker scaffold
-- Docker Compose orchestration
-
-## Current flow
-
-1. Create a project
-2. Add source artifacts
-3. Create a modernization job
-4. Run the job to produce a normalized analysis result
-
-## Quick start
+## Run
 
 ```bash
 docker compose up --build
 ```
 
-Then use the API at:
+Services:
+- Control plane: http://localhost:8000
+- SQLGlot worker: http://localhost:8001
+- COBOL worker adapter: http://localhost:8002
 
-- http://localhost:8000
-- http://localhost:8001 for sqlglot-worker
-- http://localhost:8002 for cobol-worker
-
-## Example endpoints
+Create a project, artifact, and job:
 
 ```bash
-curl http://localhost:8000/projects -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Legacy Billing"}'
-
-curl http://localhost:8000/projects/{project_id}/artifacts -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"name":"billing.sql","language":"sql","content":"SELECT customer_id, customer_name FROM customer;"}'
-
-curl http://localhost:8000/jobs -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"project_id":"{project_id}","artifact_id":"{artifact_id}","engine":"sqlglot"}'
-
-curl http://localhost:8000/jobs/{job_id}/run
+PROJECT=$(curl -s localhost:8000/projects -X POST -H 'Content-Type: application/json' -d '{"name":"Legacy Billing"}' | python -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+ARTIFACT=$(curl -s localhost:8000/projects/$PROJECT/artifacts -X POST -H 'Content-Type: application/json' -d '{"name":"billing.sql","language":"sql","content":"SELECT customer_id FROM customer;"}' | python -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+curl localhost:8000/jobs -X POST -H 'Content-Type: application/json' -d "{\"project_id\":\"$PROJECT\",\"artifact_id\":\"$ARTIFACT\",\"engine\":\"sqlglot\"}"
 ```
 
-## Next milestones
+The job is processed asynchronously by `job-runner`; poll `GET /jobs/{job_id}` until `completed` or `failed`.
 
-- project upload with object storage
-- real job workers and async consumption
-- dependency graph extraction
-- AI-driven modernization planning
-- build/test verification pipeline
+## Important licensing note
+
+This repository does **not** yet contain every OSS engine from the target architecture. It currently contains a SQLGlot worker and a COBOL parser adapter scaffold. FORTRAN, LLVM/clang-tidy, Cobrix, pgloader, Graphviz, and the actual ProLeap Java parser runtime still need separate adapters and license review before distribution.
