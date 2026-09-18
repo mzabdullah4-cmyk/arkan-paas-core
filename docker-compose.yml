@@ -1,37 +1,40 @@
 version: '3.8'
 
 services:
-  # 1. The Core API Gateway
-  control-plane:
-    build: 
-      context: ./control-plane
-    ports:
-      - "8000:8000"
-    environment:
-      - REDIS_URL=redis://redis-broker:6379
-    depends_on:
-      - redis-broker
-
-  # 2. The Message Broker (Task Queue)
   redis-broker:
     image: redis:7-alpine
     ports:
       - "6379:6379"
 
-  # 3. The SQL AST Engine
+  control-plane:
+    build:
+      context: ./control-plane
+    ports:
+      - "8000:8000"
+    environment:
+      REDIS_URL: redis://redis-broker:6379/0
+      ARKAN_DB_PATH: /data/arkan.db
+    depends_on:
+      - redis-broker
+    volumes:
+      - ./control-plane/data:/data
+
   sqlglot-worker:
     build:
       context: ./ast-engines/sqlglot-worker
+    ports:
+      - "8001:8000"
     environment:
-      - REDIS_URL=redis://redis-broker:6379
+      REDIS_URL: redis://redis-broker:6379/0
     depends_on:
       - redis-broker
 
-  # 4. The COBOL AST Engine (MIT Parser)
   cobol-worker:
     build:
       context: ./ast-engines/proleap-cobol-parser
+    ports:
+      - "8002:8000"
     environment:
-      - REDIS_URL=redis://redis-broker:6379
+      REDIS_URL: redis://redis-broker:6379/0
     depends_on:
       - redis-broker
