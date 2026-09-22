@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arkan Console</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">A</span><span>Arkan Console</span></div>
+    <span class="environment">Platform shell · MVP</span>
+  </header>
+  <div class="layout">
+    <aside class="sidebar">
+      <button class="nav active" data-view="overview">Overview</button>
+      <button class="nav" data-view="projects">Projects</button>
+      <button class="nav" data-view="jobs">Jobs</button>
+      <button class="nav" data-view="engines">Engine catalog</button>
+    </aside>
+    <main class="content">
+      <div id="notice" class="notice" hidden></div>
+      <section id="overview" class="view">
+        <div class="heading"><div><p class="eyebrow">ARKAN PLATFORM</p><h1>Modernization workspace</h1><p class="muted">Manage source artifacts, analysis engines, and asynchronous jobs from one console.</p></div><button class="primary" data-view-target="projects">Open projects</button></div>
+        <div class="cards"><article class="card"><span class="label">Projects</span><strong id="project-count">—</strong></article><article class="card"><span class="label">Jobs</span><strong id="job-count">—</strong></article><article class="card"><span class="label">Engines</span><strong id="engine-count">—</strong></article></div>
+        <div class="panel"><div class="panel-title"><h2>Recent jobs</h2><button class="link" data-view-target="jobs">View all</button></div><div id="recent-jobs" class="table-wrap"><p class="muted">Loading…</p></div></div>
+      </section>
+      <section id="projects" class="view" hidden>
+        <div class="heading"><div><p class="eyebrow">WORKSPACES</p><h1>Projects</h1></div></div>
+        <div class="panel"><form id="project-form" class="inline-form"><input id="project-name" required placeholder="Project name"><input id="project-description" placeholder="Description"><button class="primary">Create project</button></form></div>
+        <div id="projects-list" class="project-grid"><p class="muted">Loading…</p></div>
+      </section>
+      <section id="jobs" class="view" hidden><div class="heading"><div><p class="eyebrow">EXECUTION</p><h1>Jobs</h1><p class="muted">Every analysis is tracked as a durable platform job.</p></div></div><div class="panel"><div id="jobs-list" class="table-wrap"><p class="muted">Loading…</p></div></div></section>
+      <section id="engines" class="view" hidden><div class="heading"><div><p class="eyebrow">ADAPTER SDK</p><h1>Engine catalog</h1><p class="muted">Tools are isolated behind a consistent Arkan adapter contract.</p></div></div><div id="engines-list" class="engine-grid"><p class="muted">Loading…</p></div></section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
