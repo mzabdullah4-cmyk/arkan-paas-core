@@ -1,54 +1,34 @@
 version: '3.8'
-
 services:
   redis-broker:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
-
+    ports: ['6379:6379']
   control-plane:
-    build:
-      context: ./control-plane
-    ports:
-      - "8000:8000"
+    build: {context: ./control-plane}
+    ports: ['8000:8000']
     environment:
       REDIS_URL: redis://redis-broker:6379/0
       ARKAN_DB_PATH: /data/arkan.db
-    depends_on:
-      - redis-broker
-    volumes:
-      - ./control-plane/data:/data
-
+      ARKAN_ARTIFACT_ROOT: /data/artifacts
+    depends_on: [redis-broker]
+    volumes: ['./control-plane/data:/data']
   job-runner:
-    build:
-      context: ./job-runner
+    build: {context: ./job-runner}
     environment:
       REDIS_URL: redis://redis-broker:6379/0
       CONTROL_PLANE_URL: http://control-plane:8000
       SQLGLOT_URL: http://sqlglot-worker:8000
       PROLEAP_URL: http://cobol-worker:8000
-    depends_on:
-      - redis-broker
-      - control-plane
-      - sqlglot-worker
-      - cobol-worker
-
+    depends_on: [redis-broker, control-plane, sqlglot-worker, cobol-worker]
   sqlglot-worker:
-    build:
-      context: ./ast-engines/sqlglot-worker
-    ports:
-      - "8001:8000"
-    environment:
-      REDIS_URL: redis://redis-broker:6379/0
-    depends_on:
-      - redis-broker
-
+    build: {context: ./ast-engines/sqlglot-worker}
+    ports: ['8001:8000']
+    depends_on: [redis-broker]
   cobol-worker:
-    build:
-      context: ./ast-engines/proleap-cobol-parser
-    ports:
-      - "8002:8000"
-    environment:
-      REDIS_URL: redis://redis-broker:6379/0
-    depends_on:
-      - redis-broker
+    build: {context: ./ast-engines/proleap-cobol-parser}
+    ports: ['8002:8000']
+    depends_on: [redis-broker]
+  portal:
+    build: {context: ./portal}
+    ports: ['8080:8080']
+    depends_on: [control-plane]
