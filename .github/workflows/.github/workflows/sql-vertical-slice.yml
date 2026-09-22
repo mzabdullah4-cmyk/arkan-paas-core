@@ -1,0 +1,28 @@
+name: SQL vertical slice
+
+on:
+  push:
+    branches: [main, 'phase-1/**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  compose-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose file
+        run: docker compose -f docker-compose.yml config -q
+      - name: Start Arkan locally
+        run: docker compose -f docker-compose.yml up -d --build
+      - name: Test SQL workflow
+        run: bash scripts/e2e-smoke.sh
+      - name: Show diagnostics
+        if: always()
+        run: docker compose -f docker-compose.yml ps && docker compose -f docker-compose.yml logs --no-color --tail=200
+      - name: Stop Arkan
+        if: always()
+        run: docker compose -f docker-compose.yml down -v
