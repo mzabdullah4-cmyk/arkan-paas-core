@@ -1,73 +1,190 @@
-import os
-import redis
-from fastapi import FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from typing import Optional
-from . import db
+
+from .db import (
+    create_artifact,
+    create_job,
+    create_project,
+    fetch_artifact,
+    fetch_job,
+    fetch_project,
+    init_db,
+    job_payload,
+    list_artifacts,
+    list_jobs,
+    list_projects,
+    update_job,
+)
+from .queue import queue_job
+from .services import get_engine, list_engines, store_artifact
 
 app = FastAPI(title="Arkan Control Plane", version="0.5.0")
-ENGINES = {
- "sqlglot": {"version":"latest","description":"SQL AST analysis","languages":["sql","embedded-sql"],"license":"MIT"},
- "proleap": {"version":"adapter-scaffold","description":"COBOL analysis adapter boundary","languages":["cobol"],"license":"review-required"},
-}
 
-class ProjectCreate(BaseModel): name: str = Field(min_length=1, max_length=200); description: Optional[str] = Field(default=None, max_length=2000)
-class JobCreate(BaseModel): project_id: str; artifact_id: str; engine: str; max_attempts: int = Field(default=3, ge=1, le=10)
-class Result(BaseModel): result: Optional[dict] = None; error: Optional[str] = None
 
-def authorize(token: Optional[str], internal=False):
-    expected = os.getenv("ARKAN_INTERNAL_TOKEN" if internal else "ARKAN_API_TOKEN")
-    if expected and token != f"Bearer {expected}": raise HTTPException(401, "Unauthorized")
+class ProjectCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = Field(default=None, max_length=2000)
+
+
+class ArtifactCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    language: str = Field(..., min_length=1, max_length=50)
+    content: str = Field(..., min_length=1)
+
+
+class JobCreate(BaseModel):
+    project_id: str
+    artifact_id: str
+    engine: str = "sqlglot"
+    max_attempts: int = Field(default=3, ge=1, le=10)
+
+
+class JobResult(BaseModel):
+    result: Optional[dict] = None
+    error: Optional[str] = None
+
 
 @app.on_event("startup")
-def startup(): db.init_db()
+def startup_event() -> None:
+    init_db()
+
+
 @app.get("/")
-def root(): return {"status":"online","service":"Arkan API Gateway","version":"0.5.0"}
+def root() -> dict:
+    return {"status": "online", "service": "Arkan API Gateway", "version": "0.5.0"}
+
+
 @app.get("/health")
-def health(): return {"status":"ok","service":"control-plane"}
+def health() -> dict:
+    return {"status": "ok", "service": "control-plane"}
+
+
 @app.get("/engines")
-def engines(): return {"engines":[{"name":n,**v,"timeout_seconds":300} for n,v in ENGINES.items()]}
+def engines() -> dict:
+    return {"engines": list_engines()}
+
+
+@app.get("/engines/{engine_name}")
+def engine(engine_name: str) -> dict:
+    try:
+        return get_engine(engine_name)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Engine not found")
+
+
 @app.post("/projects")
-def create_project(payload: ProjectCreate, authorization: Optional[str]=Header(None)):
-    authorize(authorization); return db.create_project(payload.name,payload.description)
+def create_project_endpoint(payload: ProjectCreate) -> dict:
+    return create_project(payload.name, payload.description)
+
+
 @app.get("/projects")
-def list_projects(authorization: Optional[str]=Header(None)):
-    authorize(authorization); return {"projects":db.projects()}
+def get_projects() -> dict:
+    return {"projects": list_projects()}
+
+
+@app.get("/projects/{project_id}")
+def get_project(project_id: str) -> dict:
+    project = fetch_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project
+
+
+@app.post("/projects/{project_id}/artifacts")
+def add_artifact(project_id: str, payload: ArtifactCreate) -> dict:
+    if not fetch_project(project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    raw = payload.content.encode("utf-8")
+    stored = store_artifact(raw)
+    return create_artifact(
+        project_id,
+        payload.name,
+        payload.language,
+        payload.content,
+        stored["path"],
+        stored["sha256"],
+        stored["size"],
+    )
+
+
 @app.post("/projects/{project_id}/artifacts/upload")
-async def upload(project_id: str, language: str, file: UploadFile=File(...), authorization: Optional[str]=Header(None)):
-    authorize(authorization)
-    if not db.project(project_id): raise HTTPException(404,"Project not found")
+async def upload_artifact(project_id: str, language: str, file: UploadFile = File(...)) -> dict:
+    if not fetch_project(project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
     raw = await file.read()
-    if not raw or len(raw) > int(os.getenv("ARKAN_MAX_ARTIFACT_BYTES", str(50*1024*1024))): raise HTTPException(400,"Invalid or oversized artifact")
-    return db.create_artifact(project_id, file.filename or "artifact", language, raw.decode("utf-8",errors="replace"))
+    if not raw:
+        raise HTTPException(status_code=400, detail="Uploaded artifact is empty")
+    if len(raw) > int(__import__("os").getenv("ARKAN_MAX_ARTIFACT_BYTES", str(50 * 1024 * 1024))):
+        raise HTTPException(status_code=400, detail="Uploaded artifact is too large")
+    stored = store_artifact(raw)
+    content = raw.decode("utf-8", errors="replace")
+    return create_artifact(
+        project_id,
+        file.filename or "artifact",
+        language,
+        content,
+        stored["path"],
+        stored["sha256"],
+        stored["size"],
+    )
+
+
 @app.get("/projects/{project_id}/artifacts")
-def list_artifacts(project_id: str, authorization: Optional[str]=Header(None)):
-    authorize(authorization); return {"artifacts":db.artifacts(project_id)}
+def get_artifacts(project_id: str) -> dict:
+    if not fetch_project(project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {"artifacts": list_artifacts(project_id)}
+
+
 @app.post("/jobs")
-def create_job(payload: JobCreate, authorization: Optional[str]=Header(None)):
-    authorize(authorization)
-    if payload.engine.lower() not in ENGINES: raise HTTPException(400,"Unsupported engine")
-    art=db.artifact(payload.artifact_id)
-    if not art or art["project_id"] != payload.project_id: raise HTTPException(404,"Artifact not found in project")
-    job=db.create_job(payload.project_id,payload.artifact_id,payload.engine,payload.max_attempts)
-    redis.Redis.from_url(os.getenv("REDIS_URL","redis://redis-broker:6379/0")).lpush("arkan:jobs", __import__("json").dumps({"job_id":job["id"],"attempt":0}))
-    return job
+def create_job_endpoint(payload: JobCreate) -> dict:
+    if not fetch_project(payload.project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    artifact = fetch_artifact(payload.artifact_id)
+    if not artifact or artifact["project_id"] != payload.project_id:
+        raise HTTPException(status_code=404, detail="Artifact not found in project")
+    try:
+        get_engine(payload.engine)
+    except KeyError:
+        raise HTTPException(status_code=400, detail=f"Unsupported engine: {payload.engine}")
+    job = create_job(payload.project_id, payload.artifact_id, payload.engine, payload.max_attempts)
+    queue_job(job["id"], {"engine": payload.engine, "attempt": 0})
+    return fetch_job(job["id"])
+
+
 @app.get("/jobs")
-def list_jobs(authorization: Optional[str]=Header(None)):
-    authorize(authorization); return {"jobs":db.jobs()}
+def get_jobs() -> dict:
+    return {"jobs": list_jobs()}
+
+
 @app.get("/jobs/{job_id}")
-def get_job(job_id: str, authorization: Optional[str]=Header(None)):
-    authorize(authorization); value=db.job(job_id)
-    if not value: raise HTTPException(404,"Job not found")
-    return value
+def get_job(job_id: str) -> dict:
+    job = fetch_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
 @app.get("/internal/jobs/{job_id}/payload")
-def internal_payload(job_id: str, authorization: Optional[str]=Header(None)):
-    authorize(authorization,True); value=db.payload(job_id)
-    if not value: raise HTTPException(404,"Job not found")
-    return value
+def get_job_payload(job_id: str) -> dict:
+    payload = job_payload(job_id)
+    if not payload:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return payload
+
+
 @app.post("/internal/jobs/{job_id}/running")
-def running(job_id: str, authorization: Optional[str]=Header(None)):
-    authorize(authorization,True); return db.update_job(job_id,"running",increment=True)
+def mark_running(job_id: str) -> dict:
+    if not fetch_job(job_id):
+        raise HTTPException(status_code=404, detail="Job not found")
+    return update_job(job_id, "running", increment_attempt=True)
+
+
 @app.post("/internal/jobs/{job_id}/complete")
-def complete(job_id: str, result: Result, authorization: Optional[str]=Header(None)):
-    authorize(authorization,True); return db.update_job(job_id,"failed" if result.error else "completed",result.result,error=result.error)
+def complete_job(job_id: str, payload: JobResult) -> dict:
+    if not fetch_job(job_id):
+        raise HTTPException(status_code=404, detail="Job not found")
+    if payload.error:
+        return update_job(job_id, "failed", error=payload.error)
+    return update_job(job_id, "completed", result=payload.result or {})
