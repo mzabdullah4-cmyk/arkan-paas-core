@@ -1,55 +1,23 @@
 # Arkan PaaS Core
 
-This repo is a minimal but working MVP for a job-driven legacy modernization PaaS.
+Arkan is a console-style application platform for legacy modernization. The portal presents projects, jobs, and registered analysis tools through one platform API; isolated adapters perform specialized work.
 
-## What is included
+## Current vertical flow
 
-- FastAPI control plane
-- SQLite-backed project, artifact, and job storage
-- Redis-backed job queue with service callback flow
-- Job runner that polls Redis and dispatches work to engine adapters
-- SQLGlot worker scaffold
-- COBOL parser adapter scaffold
-- Docker Compose orchestration
+`Portal → Control Plane API → Redis queue → Job Runner → registered engine adapter → normalized result → job status`
 
-## Runtime flow
+The current catalog includes SQLGlot and a ProLeap COBOL adapter boundary. Additional OSS engines must be added as isolated adapters after license review and Trivy/SBOM scanning.
 
-1. Create project
-2. Upload artifact
-3. Queue a job
-4. job-runner consumes the Redis queue
-5. Engine adapter executes analysis
-6. Control plane records completed/failed status
-
-## Run
+## Run locally
 
 ```bash
-docker compose up --build
+docker compose -f docker-compose.prod.yml up --build
 ```
 
-Services:
-- Control plane: http://localhost:8000
-- SQLGlot worker: http://localhost:8001
-- COBOL worker: http://localhost:8002
+Open `http://localhost:8080`. The portal proxies `/api/*` to the control plane. The API exposes `/engines`, `/projects`, `/jobs`, and artifact upload endpoints.
 
-## Example usage
+## IBM VM baseline
 
-```bash
-PROJECT=$(curl -s http://localhost:8000/projects -X POST -H 'Content-Type: application/json' -d '{"name":"Legacy Billing"}' | python -c 'import json,sys; print(json.load(sys.stdin)["id"])')
-ARTIFACT=$(curl -s http://localhost:8000/projects/$PROJECT/artifacts -X POST -H 'Content-Type: application/json' -d '{"name":"billing.sql","language":"sql","content":"SELECT customer_id, customer_name FROM customer;"}' | python -c 'import json,sys; print(json.load(sys.stdin)["id"])')
-curl -s http://localhost:8000/jobs -X POST -H 'Content-Type: application/json' -d "{\"project_id\":\"$PROJECT\",\"artifact_id\":\"$ARTIFACT\",\"engine\":\"sqlglot\"}"
-```
+See `deploy/IBM-VM.md`. Keep only the portal/reverse proxy public; Redis, the control plane, job runner, and workers should remain on the private Compose network. Mount `/opt/arkan/data` and `/opt/arkan/artifacts` for persistence and back them up before upgrades.
 
-Poll status:
-
-```bash
-curl http://localhost:8000/jobs/<job_id>
-```
-
-## Security note
-
-This repo is intended for local orchestration and testing. The Dockerfiles run as a non-root user, and the stack avoids exposing database credentials in source. For production, add service auth, private networking, secrets management, and stricter sandboxing around the worker environment.
-
-## Licensing note
-
-This repo does not include the full complement of engines from the full vision architecture. It currently includes SQLGlot and a COBOL adapter scaffold. FORTRAN, LLVM/clang-tidy, Cobrix, pgloader, Graphviz, and the actual ProLeap parser runtime remain separate integration steps with their own license review.
+Before deployment, scan every built image with Trivy, generate an SBOM, review licenses separately, configure TLS, and add authentication/service authorization. This repository is a development/deployment baseline, not a production security certification.
