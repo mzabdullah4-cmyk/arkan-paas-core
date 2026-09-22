@@ -1,4 +1,4 @@
+python-multipart
 fastapi
 uvicorn
 redis
-python-multipart

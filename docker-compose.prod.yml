@@ -1,11 +1,9 @@
 version: "3.8"
-
 services:
   redis-broker:
     image: redis:7-alpine
     restart: unless-stopped
     networks: [internal]
-
   control-plane:
     build: ./control-plane
     restart: unless-stopped
@@ -13,41 +11,34 @@ services:
       REDIS_URL: redis://redis-broker:6379/0
       ARKAN_DB_PATH: /data/arkan.db
       ARKAN_ARTIFACT_ROOT: /artifacts
-    volumes:
-      - /opt/arkan/data:/data
-      - /opt/arkan/artifacts:/artifacts
+      ARKAN_API_TOKEN: ${ARKAN_API_TOKEN}
+      ARKAN_INTERNAL_TOKEN: ${ARKAN_INTERNAL_TOKEN}
+    volumes: [/opt/arkan/data:/data, /opt/arkan/artifacts:/artifacts]
     networks: [internal]
     depends_on: [redis-broker]
-
   job-runner:
     build: ./job-runner
     restart: unless-stopped
     environment:
       REDIS_URL: redis://redis-broker:6379/0
       CONTROL_PLANE_URL: http://control-plane:8000
-      SQLGLOT_URL: http://sqlglot-worker:8000/analyze
-      PROLEAP_URL: http://cobol-worker:8000/analyze
+      SQLGLOT_URL: http://sqlglot-worker:8000
+      PROLEAP_URL: http://cobol-worker:8000
+      ARKAN_INTERNAL_TOKEN: ${ARKAN_INTERNAL_TOKEN}
     networks: [internal]
-    depends_on: [redis-broker, control-plane, sqlglot-worker, cobol-worker]
-
+    depends_on: [control-plane, sqlglot-worker, cobol-worker]
   sqlglot-worker:
     build: ./ast-engines/sqlglot-worker
     restart: unless-stopped
     networks: [internal]
-
   cobol-worker:
     build: ./ast-engines/proleap-cobol-parser
     restart: unless-stopped
     networks: [internal]
-
   portal:
     build: ./portal
     restart: unless-stopped
-    ports:
-      - "8080:8080"
+    ports: ["8080:8080"]
     networks: [internal]
     depends_on: [control-plane]
-
-networks:
-  internal:
-    driver: bridge
+networks: {internal: {driver: bridge}}

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+COMPOSE="docker compose -f "$ROOT/docker-compose.prod.yml""
+case "${1:-status}" in
+  start) $COMPOSE up -d --build ;;
+  stop) $COMPOSE down ;;
+  restart) $COMPOSE up -d --build ;;
+  status) $COMPOSE ps ;;
+  logs) $COMPOSE logs --tail="${2:-100}" ;;
+  backup) mkdir -p /opt/arkan/backups; tar -czf "/opt/arkan/backups/arkan-$(date +%Y%m%d-%H%M%S).tgz" /opt/arkan/data /opt/arkan/artifacts ;;
+  update) git pull --ff-only; $COMPOSE up -d --build ;;
+  *) echo "usage: $0 {start|stop|restart|status|logs [lines]|backup|update}"; exit 2;;
+esac
